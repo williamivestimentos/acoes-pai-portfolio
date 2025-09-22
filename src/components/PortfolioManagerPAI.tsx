@@ -56,7 +56,7 @@ interface PortfolioData {
 }
 
 // ================================
-// Helpers
+/** Helpers gerais */
 // ================================
 const uid = () => Math.random().toString(36).slice(2);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -65,21 +65,27 @@ const CURRENCY = (x: number, currency = "BRL") =>
 const numberFmt = (x: number, digits = 2) =>
   x.toLocaleString("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
-// ======= Se estiver usando persistência no GitHub, troque por loadAllRemote/saveAllRemote =======
-const LS_KEY = "acoes_pai_portfolios_v1";
-const loadAllLocal = (): PortfolioData[] => {
-  try {
-    if (typeof window === "undefined") return [];
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
-};
-const saveAllLocal = (data: PortfolioData[]) => {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(LS_KEY, JSON.stringify(data));
-};
+// ======= Persistência remota no GitHub via /api/portfolios =======
+async function loadAllRemote(): Promise<PortfolioData[]> {
+  const r = await fetch("/api/portfolios", { method: "GET", cache: "no-store" });
+  if (!r.ok) throw new Error("Falha ao carregar dados remotos");
+  const { ok, data, error } = await r.json();
+  if (!ok) throw new Error(error || "Erro remoto");
+  return Array.isArray(data) ? data : [];
+}
+
+// debounce simples para evitar commits em excesso
+let _saveTimer: any = null;
+function saveAllRemote(data: PortfolioData[]) {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(async () => {
+    await fetch("/api/portfolios", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data })
+    });
+  }, 400);
+}
 
 // ================================
 // Cálculos
@@ -270,43 +276,55 @@ export default function PortfolioManagerPAI() {
   const [sel, setSel] = useState<string>("");
   const [tab, setTab] = useState("Visão Geral");
 
-  // Seleciona o portfólio atual (DEFINA ANTES de usar em cálculos)
+  // Seleciona o portfólio atual (antes de usar nos cálculos)
   const currentPortfolio = useMemo(
     () => data.find((p) => p.id === sel) ?? null,
     [data, sel]
   );
 
-  // Carrega / cria demo (troque por loadAllRemote() se usar GitHub)
+  // Carrega do GitHub (ou cria demo e salva)
   useEffect(() => {
-    const loaded = loadAllLocal();
-    if (loaded.length === 0) {
-      const demo: PortfolioData = {
-        id: uid(), name: "Portfólio Principal", baseCurrency: "BRL",
-        transactions: [
-          { id: uid(), date: todayISO(), ticker: "PETR4", type: "BUY", qty: 100, price: 37.5 },
-          { id: uid(), date: todayISO(), ticker: "VALE3", type: "BUY", qty: 20,  price: 62.2 },
-        ],
-        prices: [
-          { ticker: "PETR4", price: 38.1, updatedAt: new Date().toISOString() },
-          { ticker: "VALE3", price: 61.8, updatedAt: new Date().toISOString() },
-        ],
-        triggers: [
-          { ticker: "PETR4", buyPrice: 37.0, sellPrice: 42.0, trailingStopPct: 8, note: "Faixa tática" },
-          { ticker: "VALE3", buyPrice: 60.0, sellPrice: 68.0 },
-        ],
-        dividends: [
-          { id: uid(), date: todayISO(), ticker: "PETR4", type: "PN", valuePerShare: 0.75 },
-        ],
-        history: [],
-      };
-      setData([demo]); setSel(demo.id);
-    } else {
-      setData(loaded); setSel(loaded[0]?.id || "");
-    }
+    (async () => {
+      try {
+        const loaded = await loadAllRemote();
+        if (loaded.length === 0) {
+          const demo: PortfolioData = {
+            id: uid(), name: "Portfólio Principal", baseCurrency: "BRL",
+            transactions: [
+              { id: uid(), date: todayISO(), ticker: "PETR4", type: "BUY", qty: 100, price: 37.5 },
+              { id: uid(), date: todayISO(), ticker: "VALE3", type: "BUY", qty: 20,  price: 62.2 },
+            ],
+            prices: [
+              { ticker: "PETR4", price: 38.1, updatedAt: new Date().toISOString() },
+              { ticker: "VALE3", price: 61.8, updatedAt: new Date().toISOString() },
+            ],
+            triggers: [
+              { ticker: "PETR4", buyPrice: 37.0, sellPrice: 42.0, trailingStopPct: 8, note: "Faixa tática" },
+              { ticker: "VALE3", buyPrice: 60.0, sellPrice: 68.0 },
+            ],
+            dividends: [
+              { id: uid(), date: todayISO(), ticker: "PETR4", type: "PN", valuePerShare: 0.75 },
+            ],
+            history: [],
+          };
+          setData([demo]);
+          setSel(demo.id);
+          saveAllRemote([demo]); // cria portfolios.json no repo
+        } else {
+          setData(loaded);
+          setSel(loaded[0]?.id || "");
+        }
+      } catch (e) {
+        console.error("[loadAllRemote] erro:", e);
+        setData([]);
+      }
+    })();
   }, []);
 
-  // Persiste (local) — troque por saveAllRemote(data) se usar GitHub
-  useEffect(() => { if (data.length > 0) saveAllLocal(data); }, [data]);
+  // Persiste (GitHub via API) sempre que houver mudanças
+  useEffect(() => {
+    if (data.length > 0) saveAllRemote(data);
+  }, [data]);
 
   // CRUD básico
   const newPortfolio = () => {
