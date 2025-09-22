@@ -1,0 +1,23 @@
+[
+  {
+    "id": "demo-1",
+    "name": "Portfólio Principal",
+    "baseCurrency": "BRL",
+    "transactions": [
+      { "id": "t1", "date": "2025-01-15", "ticker": "PETR4", "type": "BUY", "qty": 100, "price": 37.5, "fees": 0 },
+      { "id": "t2", "date": "2025-02-10", "ticker": "VALE3", "type": "BUY", "qty": 20, "price": 62.2, "fees": 0 }
+    ],
+    "prices": [
+      { "ticker": "PETR4", "price": 38.1, "updatedAt": "2025-01-16T12:00:00.000Z" },
+      { "ticker": "VALE3", "price": 61.8, "updatedAt": "2025-02-11T12:00:00.000Z" }
+    ],
+    "triggers": [
+      { "ticker": "PETR4", "buyPrice": 37.0, "sellPrice": 42.0, "trailingStopPct": 8, "note": "Faixa tática" },
+      { "ticker": "VALE3", "buyPrice": 60.0, "sellPrice": 68.0 }
+    ],
+    "dividends": [
+      { "id": "d1", "date": "2025-03-01", "ticker": "PETR4", "type": "PN", "valuePerShare": 0.75, "note": "" }
+    ],
+    "history": []
+  }
+]
